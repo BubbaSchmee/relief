@@ -1,0 +1,71 @@
+import { describe, expect, it } from "vitest";
+import { deltaE2000, hexDeltaE, hexToBaseColorFactor, linearToSrgb, parseHex, srgbToLinear, toHex } from "../src/color.js";
+
+describe("hex", () => {
+  it("parses and round-trips", () => {
+    expect(parseHex("#FF2E9A")).toEqual({ r: 255, g: 46, b: 154 });
+    expect(toHex(parseHex("#ff2e9a"))).toBe("#FF2E9A");
+    expect(parseHex("ff2e9a")).toEqual({ r: 255, g: 46, b: 154 });
+  });
+  it("refuses to guess at a malformed colour", () => {
+    expect(() => parseHex("#F29")).toThrow();
+    expect(() => parseHex("pink")).toThrow();
+  });
+});
+
+describe("sRGB transfer", () => {
+  it("is the exact piecewise EOTF, not a power law", () => {
+    // the knee: 0.04045 * 255 = 10.31; below it the curve is linear
+    expect(srgbToLinear(10)).toBeCloseTo(10 / 255 / 12.92, 12);
+    // a mid grey, the value every renderer disagrees about if you use pow(2.2)
+    expect(srgbToLinear(128)).toBeCloseTo(0.21586050011389923, 12);
+    expect(srgbToLinear(255)).toBe(1);
+    expect(srgbToLinear(0)).toBe(0);
+  });
+  it("round-trips every 8-bit value exactly", () => {
+    for (let v = 0; v <= 255; v++) expect(Math.round(linearToSrgb(srgbToLinear(v)))).toBe(v);
+  });
+  it("baseColorFactor is linear with alpha 1", () => {
+    const [r, g, b, a] = hexToBaseColorFactor("#FF2E9A");
+    expect(r).toBe(1);
+    expect(g).toBeCloseTo(srgbToLinear(46), 12);
+    expect(b).toBeCloseTo(srgbToLinear(154), 12);
+    expect(a).toBe(1);
+  });
+});
+
+describe("CIEDE2000", () => {
+  // Sharma, Wu & Dalal (2005) reference pairs, table 1
+  const pairs: [[number, number, number], [number, number, number], number][] = [
+    [[50.0, 2.6772, -79.7751], [50.0, 0.0, -82.7485], 2.0425],
+    [[50.0, 3.1571, -77.2803], [50.0, 0.0, -82.7485], 2.8615],
+    [[50.0, 2.8361, -74.02], [50.0, 0.0, -82.7485], 3.4412],
+    [[50.0, -1.3802, -84.2814], [50.0, 0.0, -82.7485], 1.0],
+    [[50.0, 2.5, 0.0], [73.0, 25.0, -18.0], 27.1492],
+    [[50.0, 2.5, 0.0], [61.0, -5.0, 29.0], 22.8977],
+    [[50.0, 2.5, 0.0], [56.0, -27.0, -3.0], 31.903],
+    [[50.0, 2.5, 0.0], [58.0, 24.0, 15.0], 19.4535],
+    [[50.0, 2.5, 0.0], [50.0, 3.1736, 0.5854], 1.0],
+    [[50.0, 2.5, 0.0], [50.0, 3.2972, 0.0], 1.0],
+    [[50.0, 2.5, 0.0], [50.0, 1.8634, 0.5757], 1.0],
+    [[50.0, 2.5, 0.0], [50.0, 3.2592, 0.335], 1.0],
+    [[60.2574, -34.0099, 36.2677], [60.4626, -34.1751, 39.4387], 1.2644],
+    [[63.0109, -31.0961, -5.8663], [62.8187, -29.7946, -4.0864], 1.263],
+    [[35.0831, -44.1164, 3.7933], [35.0232, -40.0716, 1.5901], 1.8645],
+    [[22.7233, 20.0904, -46.694], [23.0331, 14.973, -42.5619], 2.0373],
+    [[36.4612, 47.858, 18.3852], [36.2715, 50.5065, 21.2231], 1.4146],
+    [[90.8027, -2.0831, 1.441], [91.1528, -1.6435, 0.0447], 1.4441],
+    [[90.9257, -0.5406, -0.9208], [88.6381, -0.8985, -0.7239], 1.5381],
+    [[6.7747, -0.2908, -2.4247], [5.8714, -0.0985, -2.2286], 0.6377],
+    [[2.0776, 0.0795, -1.135], [0.9033, -0.0636, -0.5514], 0.9082],
+  ];
+  it.each(pairs)("%j vs %j = %f", (a, b, expected) => {
+    const got = deltaE2000({ L: a[0], a: a[1], b: a[2] }, { L: b[0], a: b[1], b: b[2] });
+    expect(got).toBeCloseTo(expected, 3);
+  });
+  it("is symmetric and zero on identity", () => {
+    expect(hexDeltaE("#FF2E9A", "#FF2E9A")).toBe(0);
+    expect(hexDeltaE("#FF2E9A", "#FF2E9B")).toBeCloseTo(hexDeltaE("#FF2E9B", "#FF2E9A"), 10);
+    expect(hexDeltaE("#FF2E9A", "#FF2E9B")).toBeLessThan(1);
+  });
+});

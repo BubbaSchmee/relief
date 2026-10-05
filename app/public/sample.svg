@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <title>RELIEF sample logo: a ring, a raised disc and a spark</title>
+  <circle cx="200" cy="200" r="190" fill="#2E7BFF"/>
+  <circle cx="200" cy="200" r="132" fill="#FFD23F"/>
+  <path fill="#FF4D6D" d="M200 108 Q212 188 292 200 Q212 212 200 292 Q188 212 108 200 Q188 188 200 108 Z"/>
+</svg>
