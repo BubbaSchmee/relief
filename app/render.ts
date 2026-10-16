@@ -44,7 +44,9 @@ vec3 studio(vec3 N, vec3 V) {
 }
 void main() {
   vec3 N = normalize(vN), V = normalize(vV);
-  bool face = vK < 1.5; // Front and Bevel carry the brand colour: the bevel is the face's edge
+  // Front, Bevel AND Back carry the brand colour: mid-spin the viewer sees the
+  // logo mirrored, not a grey slab. Only the side walls are chrome.
+  bool face = abs(vK - 2.0) > 0.5;
   vec3 c;
   if (face && uUnlit > 0.5) {
     c = vC; // contractual colour: exactly the brand hex, no light at all
@@ -52,10 +54,10 @@ void main() {
     vec3 L1 = normalize(vec3(-0.40, 0.55, 0.73)), L2 = normalize(vec3(0.60, 0.10, 0.55)); // key, fill
     float diff = 0.34 + 0.70 * max(dot(N, L1), 0.0) + 0.22 * max(dot(N, L2), 0.0);
     float fres = 0.10 + 0.90 * pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 5.0);
-    float gloss = vK > 0.5 ? 1.8 : 1.0; // the bevel catches the light harder
+    float gloss = (vK > 0.5 && vK < 1.5) ? 1.8 : 1.0; // the bevel catches the light harder
     c = vC * diff + studio(N, V) * fres * gloss;
   } else {
-    c = studio(N, V) * 1.15 + 0.02; // Side and Back: chrome, straight from the studio
+    c = studio(N, V) * 1.15 + 0.02; // Side walls: chrome, straight from the studio
   }
   o = vec4(encode(clamp(c, 0.0, 1.0)), 1.0);
 }`;

@@ -3,7 +3,8 @@
  *  Colour rules are docs/DESIGN.md §6: one FRONT material per region carrying the
  *  exact linear hex in baseColorFactor, no texture, no COLOR_0. The bevel is part
  *  of the face (DESIGN.md §5: one height function), so it shares the FRONT
- *  material; only Side/Back share the metal one. `unlit` adds KHR_materials_unlit to the FRONT
+ *  material, and so does the Back (a spinning logo shows its colour from behind);
+ *  only the Side walls share the metal one. `unlit` adds KHR_materials_unlit to the FRONT
  *  materials only — geometry is shared, it is a material switch, not a mesh.
  *
  *  Deterministic: no timestamps, fixed key order, primitives sorted by
@@ -36,7 +37,7 @@ export function meshToGlb(mesh: Mesh, opts: GlbOptions = {}): Uint8Array {
   const groups = new Map<number, number[]>(); // key = region*2 + (0 front | 1 metal)
   for (let t = 0; t < indices.length; t += 3) {
     const v = indices[t];
-    const key = regionIndex[v] * 2 + (faceKind[v] <= FaceKind.Bevel ? 0 : 1);
+    const key = regionIndex[v] * 2 + (faceKind[v] === FaceKind.Side ? 1 : 0);
     const g = groups.get(key);
     if (g) g.push(indices[t], indices[t + 1], indices[t + 2]);
     else groups.set(key, [indices[t], indices[t + 1], indices[t + 2]]);

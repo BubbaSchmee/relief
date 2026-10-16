@@ -64,8 +64,9 @@ export interface BuildOptions {
   creaseDeg?: number;
 }
 
-/** Which surface a vertex belongs to. Front AND Bevel carry the brand colour —
- *  the bevel is the edge of the face, not a side. Side and Back are free to be
+/** Which surface a vertex belongs to. Front, Bevel AND Back carry the brand
+ *  colour — the bevel is the edge of the face, and a spinning logo should show
+ *  its colour from behind, not a grey slab. Only the Side walls are free to be
  *  metal. Bevel stays a distinct kind so a renderer can still light it
  *  differently (a matcap highlight can sweep along exactly this band).
  *
@@ -87,7 +88,7 @@ export interface Mesh {
 }
 
 export const DEFAULT_PROFILE: Profile = {
-  extrude: 0.2,
+  extrude: 0.1, // a floating badge, not a block: a 3:1 wordmark at 0.2 read as a grey slab mid-spin
   // Wider bands eat the face: a nominal 0.035 covered 43% of a five-letter
   // wordmark's front in testing. Keep it a crisp edge.
   bevelWidth: 0.012,

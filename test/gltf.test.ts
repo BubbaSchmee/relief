@@ -5,7 +5,7 @@ import { hexToBaseColorFactor } from "../src/color.js";
 import { meshToGlb } from "../src/gltf.js";
 import { buildMesh } from "../src/mesh.js";
 import { traceAlpha } from "../src/trace.js";
-import type { Mesh, Region } from "../src/types.js";
+import { FaceKind, type Mesh, type Region } from "../src/types.js";
 import { FIXTURES, loadWordmark, WORDMARK_HEX } from "./fixtures.js";
 
 const png = loadWordmark();
@@ -65,6 +65,17 @@ describe("meshToGlb: raster wordmark", () => {
 
   it("never writes vertex colours", () => {
     for (const prim of p.json.meshes[0].primitives) expect(Object.keys(prim.attributes).sort()).toEqual(["NORMAL", "POSITION", "TEXCOORD_0"]);
+  });
+
+  it("only the side walls are metal: front, bevel and BACK carry the brand colour", () => {
+    // a spinning logo must show its colour from behind, not a grey slab
+    const metal = p.json.materials.findIndex((m: { name: string }) => m.name === "metal");
+    let metalIdx = 0;
+    for (const prim of p.json.meshes[0].primitives) if (prim.material === metal) metalIdx += p.json.accessors[prim.indices].count;
+    let sideIdx = 0;
+    for (let t = 0; t < mesh.indices.length; t += 3) if (mesh.faceKind[mesh.indices[t]] === FaceKind.Side) sideIdx += 3;
+    expect(sideIdx).toBeGreaterThan(0);
+    expect(metalIdx).toBe(sideIdx);
   });
 
   it("keeps every triangle: index count across primitives == mesh.indices.length", () => {
