@@ -8,7 +8,7 @@
  *  a crack, the overlap is flattened away, and depth comes from containment
  *  (layers.ts). A logo with no transparency has its background flood-filled
  *  away first. */
-import { rgbToLab, toHex, type Lab } from "./color.js";
+import { deltaE2000, rgbToLab, toHex, type Lab } from "./color.js";
 import { assignContainmentDepth, containmentLevels, fillCoveredHoles, flattenPaintOrder, inflateRegions } from "./layers.js";
 import { traceAlpha } from "./trace.js";
 import type { Region } from "./types.js";
@@ -28,6 +28,13 @@ export interface RasterOptions {
 }
 
 const MAX_PALETTE = 16;
+/** Colours this close are ONE colour. Lossy compression (WebP, JPEG) scatters a
+ *  single flat fill into many near-identical shades: a real white wordmark came
+ *  out as 255 whites, two of them at ~46% each and dE00 0.3 apart, interleaved
+ *  pixel by pixel. As separate palette entries they traced into ~500 speckle
+ *  regions and the raster step ran for minutes. dE00 2.3 is the just-noticeable
+ *  difference; distinct brand colours sit far above 5. */
+const MERGE_DE = 5;
 const MIN_PIXELS = 50;
 const MIN_SHARE = 0.002;
 /** Background tolerance, CIELAB distance. */
@@ -170,8 +177,20 @@ export function regionsFromRaster(
   const floor = Math.max(MIN_PIXELS, MIN_SHARE * opaque);
   const ranked = [...counts].filter(([k, n]) => n >= floor && flat.has(k)).sort((a, b) => b[1] - a[1] || a[0] - b[0]);
   if (!ranked.length) return none(opaque ? "No solid colours found: this looks like a photo or a gradient, which RELIEF does not support." : "No opaque pixels to build from.");
-  if (ranked.length > MAX_PALETTE) warnings.push(`More than ${MAX_PALETTE} colours: only the ${MAX_PALETTE} most common were kept.`);
-  const keys = ranked.slice(0, MAX_PALETTE).map(([k]) => k);
+  // fold near-identical shades into the most common one already kept: the
+  // representative stays an EXACT colour from the image, never an average
+  const keys: number[] = [];
+  let merged = 0;
+  for (const [k] of ranked) {
+    const L = lab(k);
+    if (keys.some((q) => deltaE2000(lab(q), L) <= MERGE_DE)) { merged++; continue; }
+    keys.push(k);
+  }
+  if (merged) warnings.push(`${merged} near-identical shade${merged === 1 ? "" : "s"} (compression noise) merged into ${keys.length === 1 ? "one colour" : `${keys.length} colours`}.`);
+  if (keys.length > MAX_PALETTE) {
+    warnings.push(`More than ${MAX_PALETTE} colours: only the ${MAX_PALETTE} most common were kept.`);
+    keys.length = MAX_PALETTE;
+  }
   const palette = keys.map((k) => toHex(rgbOf(k)));
   const palLab = keys.map(lab);
 

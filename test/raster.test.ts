@@ -223,12 +223,13 @@ describe("regionsFromRaster: richer layouts", () => {
   });
 });
 
+const solid = (w: number, h: number, fill: (x: number, y: number) => [number, number, number, number]): RasterImage => {
+  const data = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) data.set(fill(x, y), (y * w + x) * 4);
+  return { width: w, height: h, data };
+};
+
 describe("regionsFromRaster: refusals and caps", () => {
-  const solid = (w: number, h: number, fill: (x: number, y: number) => [number, number, number, number]): RasterImage => {
-    const data = new Uint8ClampedArray(w * h * 4);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) data.set(fill(x, y), (y * w + x) * 4);
-    return { width: w, height: h, data };
-  };
 
   it("an opaque image whose corners disagree has no single background: zero regions and a clear warning", () => {
     const img = solid(100, 100, (x) => (x < 50 ? [255, 0, 0, 255] : [0, 0, 255, 255]));
@@ -264,6 +265,37 @@ describe("regionsFromRaster: refusals and caps", () => {
     expect(res.palette).toEqual([PINK]);
     expect(res.regions.length).toBe(1);
     expect(netArea(res.regions[0])).toBeCloseTo(80 * 40, 6);
+  });
+});
+
+describe("regionsFromRaster: lossy compression noise", () => {
+  // A real white logo saved as lossy WebP came back as 255 near-white shades,
+  // two of them at ~46% each, dE00 ~0.3 apart, in compression-sized blocks, and
+  // alpha ~250-254 instead of 255. As separate colours they traced into ~500
+  // speckle regions and the raster step ran for minutes (the app froze).
+  const noisy = (w: number, h: number) =>
+    solid(w, h, (x, y) => {
+      if (x < 10 || x >= w - 10 || y < 10 || y >= h - 10) return [0, 0, 0, 0];
+      return ((x >> 2) + (y >> 2)) % 2 ? [0xfd, 0xfb, 0xfd, 252] : [0xfe, 0xfc, 0xfe, 252];
+    });
+
+  it("near-identical shades are ONE colour: one region, no speckle, and the app is told why", () => {
+    const t0 = performance.now();
+    const res = regionsFromRaster(noisy(200, 80));
+    const ms = performance.now() - t0;
+    expect(res.palette.length).toBe(1);
+    expect(["#FDFBFD", "#FEFCFE"]).toContain(res.palette[0]); // an exact colour from the image, never an average
+    expect(res.regions.length).toBe(1);
+    expect(res.regions[0].holes.length).toBe(0);
+    expect(netArea(res.regions[0])).toBeCloseTo(180 * 60, 6);
+    expect(res.warnings.join(" ")).toMatch(/merged/);
+    expect(ms).toBeLessThan(1000);
+  });
+
+  it("does not merge genuinely different colours", () => {
+    // pink and a clearly different pink-red: dE00 well above the merge threshold
+    const img = solid(120, 60, (x, y) => (y < 10 || y >= 50 ? [0, 0, 0, 0] : x < 60 ? [255, 46, 154, 255] : [230, 20, 60, 255]));
+    expect(regionsFromRaster(img).palette.length).toBe(2);
   });
 });
 
