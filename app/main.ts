@@ -11,6 +11,7 @@ import { containmentLevels, flattenPaintOrder } from "../src/layers.js";
 import { regionsFromRaster } from "../src/raster.js";
 import { parseSvg } from "../src/svg.js";
 import { DEFAULT_PROFILE, type BevelCurve, type Mesh, type Profile, type Region } from "../src/types.js";
+import { desktop } from "./desktop.js";
 import { overlay } from "./overlay-ui.js";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -239,8 +240,17 @@ function rebuild() {
 dl.addEventListener("click", () => {
   if (!mesh) return;
   const bytes = meshToGlb(mesh, { unlit: $<HTMLInputElement>("unlit").checked });
+  const blob = new Blob([bytes as BlobPart], { type: "model/gltf-binary" });
+  if (desktop) {
+    // the desktop window does not reliably handle <a download>: use the native Save dialog
+    desktop.saveBlob(blob, `${baseName}.glb`).then(
+      (path) => overlay.status(path ? `Saved to ${path}` : "Save cancelled."),
+      (e) => overlay.status(`Save failed: ${e instanceof Error ? e.message : String(e)}`),
+    );
+    return;
+  }
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "model/gltf-binary" }));
+  a.href = URL.createObjectURL(blob);
   a.download = `${baseName}.glb`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);

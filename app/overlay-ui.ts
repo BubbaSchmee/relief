@@ -5,7 +5,8 @@
 import { frameFor, type Framing } from "../src/framing.js";
 import { DEFAULT_MOTION, frameTimes, poseAt, type Motion } from "../src/motion.js";
 import type { Mesh } from "../src/types.js";
-import { createEncoder, type FormatId } from "./encoders.js";
+import { desktop } from "./desktop.js";
+import { createEncoder, type Encoded, type FormatId } from "./encoders.js";
 import { FrameRenderer, OverlayRenderer } from "./render.js";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -15,8 +16,10 @@ const SIZES: { label: string; w: number; h: number }[] = [
   { label: "1080 x 1080 (square)", w: 1080, h: 1080 },
   { label: "1920 x 1080 (landscape)", w: 1920, h: 1080 },
   { label: "1080 x 1920 (portrait)", w: 1080, h: 1920 },
-  { label: "2160 x 2160 (PNG sequence only)", w: 2160, h: 2160 },
+  { label: `2160 x 2160 (${desktop ? "ProRes or PNG sequence" : "PNG sequence only"})`, w: 2160, h: 2160 },
 ];
+/** The desktop app encodes ProRes natively, so its note is not about a download or a size limit. */
+const DESKTOP_PRORES_NOTE = "Opens with transparency in DaVinci Resolve, Premiere Pro, After Effects, Final Cut Pro and iMovie. Not CapCut. Encoded on this computer with the bundled ffmpeg, at any size.";
 const FORMATS: { id: FormatId; label: string; note: string }[] = [
   {
     id: "prores",
@@ -135,7 +138,9 @@ function refresh() {
   const n = frameCount();
   const heavy = n * size.w * size.h > PRORES_MAX_PIXELS;
   const why = new Map<FormatId, string>();
-  if (big) { why.set("prores", "4K"); why.set("webm", "4K"); }
+  if (big) why.set("webm", "4K");
+  if (desktop) { if (!desktop.ffmpeg) why.set("prores", "no ffmpeg"); } // native ffmpeg streams from disk: no size or length cap
+  else if (big) why.set("prores", "4K");
   else if (heavy) why.set("prores", "too long");
   for (const o of formatSel.el.options) o.disabled = why.has(o.value as FormatId);
   // a format that is off right now falls back to PNG, the one that is always allowed and works
@@ -146,7 +151,8 @@ function refresh() {
   dirSel.row.hidden = motion.kind !== "spin";
   const fmt = FORMATS.find((f) => f.id === format)!;
   const heavyNote = why.get("prores") === "too long" ? " ProRes is switched off for a clip this long at this size: shorten it, or use WebM or the PNG sequence." : "";
-  note.textContent = `${fmt.note}${heavyNote} ${n} frames, ${size.w} x ${size.h}.`;
+  const noFfmpeg = why.get("prores") === "no ffmpeg" ? " ProRes is switched off: this app could not find ffmpeg." : "";
+  note.textContent = `${desktop && fmt.id === "prores" ? DESKTOP_PRORES_NOTE : fmt.note}${heavyNote}${noFfmpeg} ${n} frames, ${size.w} x ${size.h}.`;
   go.disabled = !mesh || exporting;
   $("ov-scrub").setAttribute("max", String(motion.duration));
   fit();
@@ -239,7 +245,11 @@ $("unlit").addEventListener("input", () => (dirty = true));
 // ---------------------------------------------------------------- export
 let abort: AbortController | null = null;
 
-function deliver(blob: Blob, filename: string) {
+/** Hand the finished file to the user. Desktop app: the native Save dialog; resolves to
+ *  the saved path, or null if they cancelled. Browser: a download, resolves to undefined. */
+async function deliver(out: Encoded, filename: string): Promise<string | null | undefined> {
+  if (desktop) return out.job ? desktop.saveJob(out.job, filename) : desktop.saveBlob(out.blob!, filename);
+  const blob = out.blob!;
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = filename;
@@ -293,10 +303,15 @@ async function runExport() {
     timing.finishMs = performance.now() - c;
     timing.totalMs = performance.now() - t0;
     const filename = `${stamp}${fmt === "png" ? "_png" : ""}.${out.ext}`;
-    deliver(out.blob, filename);
+    const savedTo = await deliver(out, filename);
+    if (savedTo === null) {
+      enc.abort(); // the desktop app's encoded file is no longer wanted
+      statusEl.textContent = "Save cancelled.";
+      return;
+    }
     const sec = (ms: number) => (ms / 1000).toFixed(1);
-    statusEl.textContent = `Done: ${filename}, ${(out.blob.size / 1e6).toFixed(1)} MB, ${sec(timing.totalMs)} s (render ${sec(timing.renderMs)}, encode ${sec(timing.addMs + timing.finishMs)}).`;
-    if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__reliefLast = { filename, bytes: out.blob.size, frames: times.length, ss, ...timing };
+    statusEl.textContent = `${savedTo ? `Saved to ${savedTo}` : `Done: ${filename}`}, ${(out.bytes / 1e6).toFixed(1)} MB, ${sec(timing.totalMs)} s (render ${sec(timing.renderMs)}, encode ${sec(timing.addMs + timing.finishMs)}).`;
+    if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__reliefLast = { filename, bytes: out.bytes, frames: times.length, ss, ...timing };
   } catch (e) {
     enc?.abort();
     const cancelled = e instanceof DOMException && e.name === "AbortError";
@@ -323,6 +338,10 @@ export const overlay = {
     baseName = name;
     preview?.setMesh(m);
     refresh();
+  },
+  /** Text for the export status line (the desktop app reports where the .glb was saved). */
+  status(text: string) {
+    statusEl.textContent = text;
   },
   /** The unlit checkbox changed. */
   redraw() {

@@ -10,10 +10,14 @@
  *  ProRes    ffmpeg.wasm. Its core is GPL-2.0-or-later (it is built with x264 and
  *            x265), so it is NOT bundled or installed: it is fetched from a CDN
  *            at runtime, only when ProRes is chosen, and checked against a
- *            pinned hash before it runs. */
+ *            pinned hash before it runs.
+ *            In the Windows desktop app (app/desktop.ts) the same ffmpeg command
+ *            runs natively instead: each PNG frame is streamed to disk as it is
+ *            made, so there is no download and no memory cap. */
 import { Zip, ZipPassThrough } from "fflate";
 import { encodePng } from "../src/png.js";
 import { rgbaToI420A } from "../src/yuv.js";
+import { desktop, type Desktop } from "./desktop.js";
 
 export type FormatId = "prores" | "webm" | "png";
 
@@ -27,7 +31,11 @@ export interface Job {
 }
 
 export interface Encoded {
-  blob: Blob;
+  /** The finished file, for the encoders that build it in memory. */
+  blob?: Blob;
+  /** The desktop app's ProRes: the file is still on disk in this job, ready for the Save dialog. */
+  job?: string;
+  bytes: number;
   ext: string;
 }
 
@@ -65,7 +73,8 @@ async function pngZip(job: Job): Promise<Encoder> {
     },
     async finish() {
       zip.end();
-      return { blob: await done, ext: "zip" };
+      const blob = await done;
+      return { blob, bytes: blob.size, ext: "zip" };
     },
     abort() { zip.terminate(); },
   };
@@ -105,7 +114,8 @@ async function webm(job: Job): Promise<Encoder> {
     },
     async finish() {
       await output.finalize();
-      return { blob: new Blob([output.target.buffer as ArrayBuffer], { type: "video/webm" }), ext: "webm" };
+      const blob = new Blob([output.target.buffer as ArrayBuffer], { type: "video/webm" });
+      return { blob, bytes: blob.size, ext: "webm" };
     },
     abort() { void output.cancel(); },
   };
@@ -187,12 +197,29 @@ async function prores(job: Job, status: Status): Promise<Encoder> {
       if (code !== 0) throw new Error(`ffmpeg exited with code ${code}`);
       const data = (await ff.readFile("out.mov")) as Uint8Array;
       ff.terminate(); // frees the wasm heap
-      return { blob: new Blob([data as BlobPart], { type: "video/quicktime" }), ext: "mov" };
+      return { blob: new Blob([data as BlobPart], { type: "video/quicktime" }), bytes: data.length, ext: "mov" };
     },
     abort() { ff.terminate(); },
   };
 }
 
+// ---------------------------------------------------------------- ProRes 4444 via native ffmpeg (desktop app)
+async function proresNative(job: Job, status: Status, d: Desktop): Promise<Encoder> {
+  const id = await d.createJob();
+  return {
+    async add(rgba, i) {
+      // streamed: one frame in memory at a time, however long or large the clip
+      await d.putFrame(id, i, encodePng(rgba, job.w, job.h, 1));
+    },
+    async finish() {
+      status("Encoding ProRes 4444 with the bundled ffmpeg");
+      return { job: id, bytes: await d.encode(id, job.fps), ext: "mov" };
+    },
+    abort() { void d.dropJob(id); },
+  };
+}
+
 export function createEncoder(format: FormatId, job: Job, status: Status): Promise<Encoder> {
-  return format === "png" ? pngZip(job) : format === "webm" ? webm(job) : prores(job, status);
+  if (format === "prores") return desktop ? proresNative(job, status, desktop) : prores(job, status);
+  return format === "png" ? pngZip(job) : webm(job);
 }

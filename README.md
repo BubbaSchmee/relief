@@ -28,6 +28,12 @@ pnpm build:app    # static site in app/dist
 
 Needs Node 22 or newer and [pnpm](https://pnpm.io). The design rationale is in [`docs/DESIGN.md`](docs/DESIGN.md).
 
+## Desktop app (Windows)
+
+RELIEF can also run as a Windows app with its own window: the same interface, with ProRes 4444 encoded by a native ffmpeg (no 32 MB download, no 1080p limit, so 4K ProRes works) and a normal Save dialog for every export. Run `desktop\build.ps1` (needs Python 3.12, pnpm and ffmpeg, for example `winget install Gyan.FFmpeg`). It builds the web app, self-tests the encoder, packages `dist-desktop\RELIEF\RELIEF.exe` and points a Desktop shortcut at it. The window serves the app on `127.0.0.1` only, with a random per-launch token on its local API, so nothing else on your machine can drive it.
+
+The packaged app bundles the ffmpeg build installed on the machine that built it, which is usually GPL-licensed. This repository does not distribute the `.exe`; if you share your packaged folder, the bundled ffmpeg's licence terms (including offering its source) come with it. The website and `pnpm app` are unchanged.
+
 ## Which format for which editor
 
 Pick your editor under "I'll use it in..." and RELIEF chooses. No single transparent format works in every editor, so there are three.

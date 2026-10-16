@@ -3,3 +3,7 @@ dist/
 *.tsbuildinfo
 .out/
 .private/
+desktop/.venv/
+desktop/build/
+dist-desktop/
+__pycache__/
