@@ -10,7 +10,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "dev": "vite app",
-    "build:app": "vite build app"
+    "build:app": "vite build app",
+    "app": "pnpm build:app && node scripts/serve.mjs"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",

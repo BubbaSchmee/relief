@@ -14,6 +14,10 @@ Drop in a flat logo and get a transparent video of it as a 3D object, spinning o
 
 ## Run it locally
 
+**As an app on your own machine:** on Windows, double-click `RELIEF.bat`; anywhere, run `pnpm app`. It builds RELIEF, serves it on `http://127.0.0.1:5180/` (reachable from your machine only) and opens it in your browser. Your logo never leaves your computer, and everything except ProRes export works offline (ProRes downloads its encoder the first time you use it). Close the window to stop it.
+
+**For development:**
+
 ```
 pnpm install
 pnpm dev          # the app, on http://localhost:5173

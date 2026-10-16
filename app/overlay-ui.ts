@@ -183,11 +183,14 @@ function fit() {
   if (canvas.height !== h) canvas.height = h;
 }
 
-let cached: { mesh: Mesh; hover: number; aspect: number; f: Framing } | null = null;
-/** Framing is a pure function of the mesh, the hover and the aspect: compute it once, not per frame. */
+let cached: { mesh: Mesh; key: string; f: Framing } | null = null;
+/** Framing is a pure function of the mesh, the motion's shape and the aspect:
+ *  compute it once, not per frame. (Loop length and spin direction do not
+ *  change which poses occur, so they are not part of the key.) */
 function framingFor(m: Mesh): Framing {
   const aspect = size.w / size.h;
-  if (!cached || cached.mesh !== m || cached.hover !== motion.hover || cached.aspect !== aspect) cached = { mesh: m, hover: motion.hover, aspect, f: frameFor(m, motion, aspect) };
+  const key = [motion.kind, motion.rockDeg, motion.tiltDeg, motion.hover, aspect].join("|");
+  if (!cached || cached.mesh !== m || cached.key !== key) cached = { mesh: m, key, f: frameFor(m, motion, aspect) };
   return cached.f;
 }
 

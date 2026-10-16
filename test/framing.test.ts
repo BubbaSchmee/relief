@@ -78,3 +78,31 @@ describe("framing: the logo never leaves the frame", () => {
     expect(framingDistance(1, 0.5, 9 / 16)).toBeGreaterThan(framingDistance(1, 0.5, 1));
   });
 });
+
+describe("framing fills the frame on the axis that matters", () => {
+  // The wordmark is ~3:1. A bounding sphere made its full width fit the frame's
+  // HEIGHT in 16:9, using well under half the width. Fitting each axis over the
+  // actual motion must fill the width at the widest moment, and still fit.
+  const mesh = meshes[0][1];
+  const widest = (motion: Motion, aspect: number) => {
+    const f = frameFor(mesh, motion, aspect);
+    let wx = 0, wy = 0;
+    for (const t of frameTimes(motion, 30)) {
+      const { mvp } = poseMatrices(f, poseAt(motion, t));
+      for (let i = 0; i < mesh.positions.length; i += 3) {
+        const [x, y] = project(mvp, mesh.positions[i], mesh.positions[i + 1], mesh.positions[i + 2]);
+        wx = Math.max(wx, Math.abs(x));
+        wy = Math.max(wy, Math.abs(y));
+      }
+    }
+    return { wx, wy };
+  };
+
+  for (const kind of ["spin", "rock"] as const)
+    it(`${kind} in 16:9: a wide wordmark fills the width (and still fits)`, () => {
+      const { wx, wy } = widest({ ...DEFAULT_MOTION, kind }, 16 / 9);
+      console.log(`${kind} 16:9 widest |ndc| x=${wx.toFixed(3)} y=${wy.toFixed(3)}`);
+      expect(wx).toBeGreaterThan(0.85); // the binding axis reaches the margin
+      expect(Math.max(wx, wy)).toBeLessThanOrEqual(1 - FRAME_MARGIN + 0.01);
+    });
+});

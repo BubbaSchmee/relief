@@ -8,7 +8,7 @@
  *  as a wordmark turns edge-on, and could never loop. The price is that a wide
  *  wordmark fills less of the frame than its face-on width would allow. */
 import type { Mesh } from "./types.js";
-import type { Motion, Pose } from "./motion.js";
+import { DEFAULT_MOTION, poseAt, type Motion, type Pose } from "./motion.js";
 
 export const FOV_Y = (30 * Math.PI) / 180;
 /** Free space kept between the sweep sphere and the frame edge, per side. */
@@ -65,11 +65,58 @@ export function framingDistance(radius: number, fovY: number, aspect: number, ma
   return radius * Math.sqrt(1 + k * k);
 }
 
-export function frameFor(mesh: Pick<Mesh, "positions">, motion: Pick<Motion, "hover">, aspect: number, fovY = FOV_Y, margin = FRAME_MARGIN): Framing {
+/** Samples per loop when fitting. Spin turns 2 degrees between samples; a
+ *  vertex's projection is at an extreme where its rate of change is zero, so the
+ *  overshoot between samples is second order and the margin absorbs it. */
+const FIT_SAMPLES = 180;
+
+/** Camera distance at which EVERY vertex, at EVERY pose of the motion, projects
+ *  inside the frame with `margin` to spare, fitted on each axis separately.
+ *
+ *  A bounding sphere wastes the frame on a wide logo: its full width had to fit
+ *  the frame's HEIGHT, so a 3:1 wordmark in a 16:9 overlay used well under half
+ *  the frame's width. Fitting the actual motion also frames a rocking logo
+ *  tighter than a spinning one, since it never turns edge-on. Still one fixed
+ *  distance for the whole clip: no zoom pumping.
+ *
+ *  Per vertex (camera on +z looking down -z, f = 1/tan(fovY/2)):
+ *    |x_ndc| = |X| f / (aspect (D - Z)) <= m   =>   D >= Z + |X| f / (aspect m)
+ *    |y_ndc| = |Y| f / (D - Z)          <= m   =>   D >= Z + |Y| f / m        */
+export function fitDistance(positions: ArrayLike<number>, center: [number, number, number], motion: Motion, aspect: number, fovY = FOV_Y, margin = FRAME_MARGIN): number {
+  const f = 1 / Math.tan(fovY / 2);
+  // 0.1% headroom: an export samples the loop at its own frame times, which can
+  // fall between the fit's samples; that overshoot is second order (measured
+  // ~3e-5 of the frame at 30 fps), so 1e-3 covers it with room to spare
+  const m = (1 - margin) * (1 - 1e-3);
+  const kx = f / (aspect * m);
+  const ky = f / m;
+  let D = 0;
+  for (let s = 0; s < FIT_SAMPLES; s++) {
+    const pose = poseAt(motion, (s / FIT_SAMPLES) * motion.duration);
+    const cy = Math.cos(pose.yaw), sy = Math.sin(pose.yaw);
+    const cp = Math.cos(pose.pitch), sp = Math.sin(pose.pitch);
+    for (let i = 0; i < positions.length; i += 3) {
+      const x = positions[i] - center[0], y = positions[i + 1] - center[1], z = positions[i + 2] - center[2];
+      // the same transform as poseMatrices: rotY, then rotX, then the lift
+      const x1 = cy * x + sy * z;
+      const z1 = -sy * x + cy * z;
+      const Y = cp * y - sp * z1 + pose.lift;
+      const Z = sp * y + cp * z1;
+      const need = Z + Math.max(Math.abs(x1) * kx, Math.abs(Y) * ky);
+      if (need > D) D = need;
+    }
+  }
+  return D;
+}
+
+export function frameFor(mesh: Pick<Mesh, "positions">, motion: Partial<Motion>, aspect: number, fovY = FOV_Y, margin = FRAME_MARGIN): Framing {
+  const mo: Motion = { ...DEFAULT_MOTION, ...motion };
   const s = boundingSphere(mesh.positions);
-  const radius = s.radius + Math.abs(motion.hover); // lift moves the whole sphere by at most this
-  const distance = framingDistance(radius, fovY, aspect, margin);
-  return { center: s.center, radius, fovY, aspect, distance, near: distance - 1.1 * radius, far: distance + 1.1 * radius };
+  const radius = s.radius + Math.abs(mo.hover); // every vertex stays within this of the pivot
+  const distance = fitDistance(mesh.positions, s.center, mo, aspect, fovY, margin);
+  // depth range from the logo's real extent; near must stay in front of the
+  // nearest possible vertex (distance - radius), which the exact fit brings close
+  return { center: s.center, radius, fovY, aspect, distance, near: Math.max(distance * 1e-3, distance - 1.05 * radius), far: distance + 1.05 * radius };
 }
 
 // ---------------------------------------------------------------- matrices
