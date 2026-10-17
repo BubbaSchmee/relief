@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildMesh } from "../src/mesh.js";
 import { DEFAULT_PROFILE, DEFAULT_TESSELLATION, FaceKind, type Region } from "../src/types.js";
-import { FIXTURES } from "./fixtures.js";
+import { FIXTURES, rect } from "./fixtures.js";
 import { iou, rasterFront, rasterRings, topology } from "./validate.js";
 
 /** The same normalisation buildMesh applies, so the silhouette can be compared
@@ -168,6 +168,31 @@ describe("profile behaviour", () => {
     console.log(`wedge: thin/thick rise ratio = ${ratio.toFixed(3)} (half-width ratio 0.467)`);
     expect(ratio).toBeGreaterThan(0.38);
     expect(ratio).toBeLessThan(0.56);
+  });
+
+  it("a thin stroke rises by its OWN half-width, never more", () => {
+    // thinO: half-width 6/180*2/2 = 0.0333. The width search used to bisect from
+    // half the logo's size: its first probe overshot the stroke into empty space,
+    // saw a "local" outline there and kept the huge radius, so one stroke of a
+    // real wordmark stood ~2.5x proud of the rest.
+    const mesh = buildMesh(FIXTURES.thinO);
+    let maxZ = -Infinity;
+    for (let i = 0; i < mesh.faceKind.length; i++)
+      if (mesh.faceKind[i] === FaceKind.Front) maxZ = Math.max(maxZ, mesh.positions[i * 3 + 2]);
+    const p = DEFAULT_PROFILE;
+    expect(maxZ).toBeLessThan(p.extrude / 2 + p.bevelHeight + p.inflate * 0.0333 * 1.1);
+  });
+
+  it("a fat blob rises by its own half-width too, not the search ceiling", () => {
+    // 200x130: half-height 0.65 sits in (rCap/2, rCap] with rCap = 1. A search
+    // that returned its ceiling unprobed gave R = 1 here and z 0.528, not 0.385.
+    const mesh = buildMesh([{ hex: "#FF2E9A", outer: rect(0, 0, 200, 130), holes: [] }]);
+    let maxZ = -Infinity;
+    for (let i = 0; i < mesh.faceKind.length; i++)
+      if (mesh.faceKind[i] === FaceKind.Front) maxZ = Math.max(maxZ, mesh.positions[i * 3 + 2]);
+    const p = DEFAULT_PROFILE;
+    expect(maxZ).toBeLessThan(p.extrude / 2 + p.bevelHeight + p.inflate * 0.65 * 1.1);
+    expect(maxZ).toBeGreaterThan(p.extrude / 2 + p.bevelHeight + p.inflate * 0.65 * 0.9);
   });
 
   it("a thin ring gets a narrower bevel instead of a broken one", () => {

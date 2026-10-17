@@ -8,7 +8,7 @@ Drop in a flat logo and get a transparent video of it as a 3D object, spinning o
 
 - Load an SVG, PNG, JPEG or WebP. Flat colours work best. Multi-colour logos become stacked layers.
 - Shape it: extrude, bevel, inflate, layer depth.
-- Choose the motion (spin or rock), loop length, tilt, hover, size and frame rate. The loop is seamless: the last frame leads straight into the first.
+- Choose the motion (spin or rock), its speed (seconds per turn, up to 20), tilt, hover, size and frame rate. The loop is seamless: the last frame leads straight into the first.
 - Export a transparent video, or a `.glb` of the 3D model.
 - "Unlit front" gives the exact brand colour with no shading, for when the colour is contractual. The default look is glossy, with chrome sides.
 

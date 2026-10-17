@@ -110,7 +110,7 @@ function select(id: string, label: string, options: { value: string; text: strin
 }
 
 select("ov-kind", "Motion", [{ value: "spin", text: "Spin" }, { value: "rock", text: "Rock back and forth" }], motion.kind, (v) => (motion.kind = v as Motion["kind"]));
-slider("ov-dur", "Loop length", 2, 10, 0.5, motion.duration, " s", (v) => { motion.duration = v; t %= v; });
+slider("ov-dur", "Seconds per loop (higher is slower)", 2, 20, 0.5, motion.duration, " s", (v) => { motion.duration = v; t %= v; });
 const rockRow = slider("ov-rock", "Rock angle", 5, 60, 1, motion.rockDeg, "°", (v) => (motion.rockDeg = v));
 const dirSel = select("ov-dir", "Spin direction", [{ value: "1", text: "Face turns right" }, { value: "-1", text: "Face turns left" }], "1", (v) => (motion.direction = v === "-1" ? -1 : 1));
 slider("ov-tilt", "Tilt", -20, 30, 1, motion.tiltDeg, "°", (v) => (motion.tiltDeg = v));

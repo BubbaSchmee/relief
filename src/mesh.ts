@@ -285,9 +285,7 @@ export function buildMesh(regions: Region[], options: Partial<BuildOptions> = {}
      *  side of the stroke. (Testing "distance == s" instead fails on a polyline:
      *  its normal is piecewise constant, so the disc clips its own segment.) */
     const inscribed = (px: number, py: number, nx: number, ny: number): number => {
-      let lo = 0, hi = rCap;
-      for (let it = 0; it < 18; it++) {
-        const s = (lo + hi) / 2;
+      const local = (s: number): boolean => {
         const cx = px + nx * s, cy = py + ny * s;
         const q = nearestOnRings(contour, cx, cy);
         const fx = cx - q.d * q.gx, fy = cy - q.d * q.gy; // the nearest outline point
@@ -295,7 +293,27 @@ export function buildMesh(regions: Region[], options: Partial<BuildOptions> = {}
         // of the stroke lies a whole stroke-width along n. (Distance alone is not
         // enough: a probe that overshoots a thin stroke finds the far edge within
         // reach of p and mistakes it for local.)
-        if ((fx - px) * nx + (fy - py) * ny <= 0.25 * s + 1e-12) lo = s;
+        return (fx - px) * nx + (fy - py) * ny <= 0.25 * s + 1e-12;
+      };
+      // Grow by doubling from a tiny radius, then bisect the first failure. The
+      // test is NOT monotone in s: a probe far past a thin stroke, out in empty
+      // space, can see a "local" outline again. Bisecting from rCap/2 landed
+      // there first and kept a radius the size of the logo, so one stroke of a
+      // real wordmark stood 2.5x proud. A straight stroke of half-width R fails
+      // over [R, 8R], wider than one doubling, so the march cannot skip it.
+      // (Beside a reflex corner the window can be narrower than 2x and get
+      // skipped; the stroke's own far side still caps R, as the old search did.)
+      // rCap itself is probed, not assumed: a fat blob's true R lies in
+      // (rCap/2, rCap], and returning rCap there bulged it to twice its height.
+      let lo = 0, hi = rCap / 4096;
+      while (local(hi)) {
+        if (hi >= rCap) return rCap;
+        lo = hi;
+        hi = Math.min(hi * 2, rCap);
+      }
+      for (let it = 0; it < 10; it++) {
+        const s = (lo + hi) / 2;
+        if (local(s)) lo = s;
         else hi = s;
       }
       return lo;
